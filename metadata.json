@@ -1,0 +1,19 @@
+
+{
+  "name": "JEE Universe",
+  "short_name": "JEE Universe",
+  "description": "The Ultimate JEE Preparation Odyssey",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#051a14",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3135/3135679.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "requestFramePermissions": []
+}
