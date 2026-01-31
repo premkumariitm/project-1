@@ -146,10 +146,10 @@
         import { createRoot } from 'react-dom/client';
 
         // --- CONSTANTS ---
-        const POINTS_PER_XP = 25; // 25 points = 1 XP
+        const POINTS_PER_XP = 25; 
         const XP_PER_LEVEL = 10;
         const POINTS_PER_LEVEL = POINTS_PER_XP * XP_PER_LEVEL; 
-        const STREAK_THRESHOLD = 300; // Updated: 300 points needed for streak daily
+        const STREAK_THRESHOLD = 300; 
 
         const POINT_SCHEME = {
             Physics: { MAINS: { EASY: 5, MEDIUM: 10, HARD: 15 }, ADVANCE: { EASY: 10, MEDIUM: 20, HARD: 30 } },
@@ -169,14 +169,111 @@
             350: { icon: '💎', name: 'Eternal Legend' }
         };
 
+        // --- UTILS ---
+        const getLast7Days = () => {
+            const days = [];
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                days.push(d.toLocaleDateString('en-CA'));
+            }
+            return days;
+        };
+
         // --- COMPONENTS ---
+
+        const SolveHistoryGraph = ({ history = {}, label = "Your progress" }) => {
+            const days = getLast7Days();
+            // Data point: raw points collected specifically today
+            const dataPoints = days.map(d => (history[d] || 0));
+            const maxVal = Math.max(...dataPoints, 10); 
+
+            // Calculate highest score ever from history object (raw points)
+            const highestEver = useMemo(() => {
+                const values = Object.values(history);
+                if (values.length === 0) return 0;
+                return Math.max(...values);
+            }, [history]);
+
+            const width = 400;
+            const height = 180;
+            const padding = 30;
+            const graphWidth = width - 2 * padding;
+            const graphHeight = height - 2 * padding;
+            
+            const points = dataPoints.map((val, i) => {
+                const x = padding + (i * graphWidth / (days.length - 1));
+                const y = (height - padding) - (val / maxVal * graphHeight);
+                return { x, y, val };
+            });
+
+            const pathData = points.reduce((acc, p, i) => {
+                return i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`;
+            }, "");
+
+            const areaData = `${pathData} L ${points[points.length-1].x} ${height-padding} L ${points[0].x} ${height-padding} Z`;
+
+            return (
+                <div className="bg-[#06241c] border border-emerald-900/50 rounded-3xl p-6 shadow-2xl w-full relative group">
+                    {/* Highest Score Box */}
+                    <div className="absolute top-6 right-6 bg-cyan-950/80 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-center shadow-lg backdrop-blur-sm z-10 transition-transform group-hover:scale-110">
+                        <div className="text-[7px] text-cyan-500/70 font-game font-bold uppercase tracking-widest leading-none mb-0.5">Highest</div>
+                        <div className="text-sm md:text-base font-game font-black text-cyan-300 leading-none">{highestEver}</div>
+                    </div>
+
+                    <div className="flex items-center justify-between mb-8">
+                        <div className="space-y-1">
+                            <h4 className="font-game text-xs md:text-sm text-emerald-400 font-bold uppercase tracking-[0.2em] leading-none">{label}</h4>
+                            <p className="text-[8px] text-emerald-700 uppercase font-bold tracking-[0.2em]">Daily Points Activity</p>
+                        </div>
+                    </div>
+                    
+                    <div className="relative w-full h-[180px]">
+                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                            {[...Array(5)].map((_, i) => (
+                                <line 
+                                    key={i} 
+                                    x1={padding} 
+                                    y1={(height - padding) - (i / 4 * graphHeight)} 
+                                    x2={width - padding} 
+                                    y2={(height - padding) - (i / 4 * graphHeight)} 
+                                    stroke="#064e3b" 
+                                    strokeWidth="1" 
+                                    strokeDasharray="4 4" 
+                                    opacity="0.3"
+                                />
+                            ))}
+
+                            <path d={areaData} fill="url(#gradient-cyan-flow)" fillOpacity="0.1" />
+                            <defs>
+                                <linearGradient id="gradient-cyan-flow" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#22d3ee" />
+                                    <stop offset="100%" stopColor="transparent" />
+                                </linearGradient>
+                            </defs>
+                            
+                            <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#064e3b" strokeWidth="2" opacity="0.6" />
+                            
+                            <path d={pathData} fill="none" stroke="#22d3ee" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" className="drop-shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-700" />
+                            
+                            {points.map((p, i) => (
+                                <g key={i}>
+                                    <circle cx={p.x} cy={p.y} r="5" fill="#22d3ee" className="cursor-pointer transition-all duration-300 hover:r-7" />
+                                    <text x={p.x} y={p.y - 12} textAnchor="middle" className="font-game text-[12px] fill-cyan-300 font-bold drop-shadow-sm">{p.val}</text>
+                                    <text x={p.x} y={height - 8} textAnchor="middle" className="font-game text-[7px] fill-emerald-800 font-bold uppercase tracking-tighter">{days[i].split('-').slice(1).join('/')}</text>
+                                </g>
+                            ))}
+                        </svg>
+                    </div>
+                </div>
+            );
+        };
 
         const CelebrationOverlay = ({ celebration, onDismiss }) => {
             if (!celebration) return null;
 
             return (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 modal-overlay fade-in overflow-hidden" onClick={onDismiss}>
-                    {/* Level Up (Graffiti Style) */}
                     {celebration.type === 'LEVEL_UP' && (
                         <div className="text-center space-y-8 pointer-events-none">
                             <div className="relative">
@@ -190,7 +287,6 @@
                         </div>
                     )}
 
-                    {/* Streak (Blazing Fire Popup) */}
                     {celebration.type === 'STREAK' && (
                         <div className="fixed inset-0 flex items-center justify-center pointer-events-auto" onClick={onDismiss}>
                             <div className="absolute inset-0 bg-orange-600/20 backdrop-blur-sm animate-pulse"></div>
@@ -213,7 +309,6 @@
                         </div>
                     )}
 
-                    {/* Badge Earned (Game Style) */}
                     {celebration.type === 'BADGE' && (
                         <div className="bg-[#06241c] border-4 border-yellow-500/50 rounded-[3rem] p-10 md:p-16 max-w-xl w-full text-center relative overflow-hidden shadow-[0_0_100px_rgba(234,179,8,0.2)]" onClick={e => e.stopPropagation()}>
                             <div className="absolute inset-0 flex items-center justify-center -z-10 opacity-30">
@@ -334,7 +429,7 @@
         );
 
         const WorldDashboard = ({ onAction }) => (
-            <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-stretch w-full pb-10">
+            <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-stretch w-full">
                 <div className="flex-1">
                     <ColumnBlock title="MAINS">
                         <SubBlockButton title="EASY" onClick={() => onAction('MAINS', 'EASY')} />
@@ -352,7 +447,7 @@
             </div>
         );
 
-        const DashboardView = ({ globalStats, onEnterWorld }) => {
+        const DashboardView = ({ globalStats, globalHistory, onEnterWorld }) => {
             const levelBadges = useMemo(() => {
                 const list = [];
                 for (let i = 10; i <= globalStats.level; i += 10) {
@@ -466,6 +561,10 @@
                             </div>
                         </div>
                     </section>
+
+                    <section className="pt-4">
+                        <SolveHistoryGraph history={globalHistory} label="Your progress" />
+                    </section>
                 </div>
             );
         };
@@ -475,7 +574,7 @@
             const getIcon = () => subject === 'Physics' ? '⚛️' : (subject === 'Chemistry' ? '🧪' : '🧮');
 
             return (
-                <div className="fade-in space-y-8 md:space-y-10">
+                <div className="fade-in space-y-8 md:space-y-10 pb-20">
                     <header className="bg-emerald-950/20 border border-emerald-900/50 rounded-2xl p-4 md:p-6 flex items-center justify-between gap-4 sticky top-4 z-40 backdrop-blur-md shadow-xl">
                         <button onClick={onBack} className="bg-[#06241c] border border-emerald-500/30 px-4 md:px-6 py-2 rounded-xl font-game text-[8px] md:text-xs text-emerald-400 uppercase tracking-widest hover:bg-emerald-900/40 transition-all active:scale-95 leading-none">← Back</button>
                         <div className="flex items-center gap-3">
@@ -495,6 +594,10 @@
                     </section>
 
                     <WorldDashboard onAction={(type, diff) => setModalConfig({ isOpen: true, examType: type, difficulty: diff })} />
+
+                    <div className="w-full">
+                         <SolveHistoryGraph history={subjectData.history} label="Your progress" />
+                    </div>
 
                     <ActionModal 
                         isOpen={modalConfig.isOpen}
@@ -518,12 +621,12 @@
             const [celebration, setCelebration] = useState(null);
 
             const [data, setData] = useState(() => {
-                const saved = localStorage.getItem('jee-universe-final-v7');
+                const saved = localStorage.getItem('jee-universe-final-v12');
                 const today = new Date().toLocaleDateString('en-CA');
                 return saved ? JSON.parse(saved) : {
-                    Physics: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } } },
-                    Chemistry: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } } },
-                    Mathematics: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } } },
+                    Physics: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } }, history: {} },
+                    Chemistry: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } }, history: {} },
+                    Mathematics: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } }, history: {} },
                     baseStreak: 0, pointsToday: 0, lastVisitDate: today,
                     shownMilestones: [] 
                 };
@@ -535,7 +638,13 @@
                     const m = data[sub].matrix;
                     const sp = Object.values(m.mains).reduce((a, b) => a + b, 0) + Object.values(m.advance).reduce((a, b) => a + b, 0);
                     gPoints += sp;
-                    subStats[sub] = { totalPoints: sp, level: Math.floor(sp / POINTS_PER_LEVEL), segments: Math.floor((sp % POINTS_PER_LEVEL) / POINTS_PER_XP), matrix: data[sub].matrix };
+                    subStats[sub] = { 
+                        totalPoints: sp, 
+                        level: Math.floor(sp / POINTS_PER_LEVEL), 
+                        segments: Math.floor((sp % POINTS_PER_LEVEL) / POINTS_PER_XP), 
+                        matrix: data[sub].matrix,
+                        history: data[sub].history || {}
+                    };
                 });
                 return { 
                     global: { points: gPoints, level: Math.floor(gPoints / POINTS_PER_LEVEL), segments: Math.floor((gPoints % POINTS_PER_LEVEL) / POINTS_PER_XP), streak: (data.baseStreak || 0) + (data.pointsToday >= STREAK_THRESHOLD ? 1 : 0) },
@@ -543,13 +652,29 @@
                 };
             }, [data]);
 
-            // Milestone Tracking and Celebration Logic
+            const globalHistory = useMemo(() => {
+                const history = {};
+                // We need to look across all dates stored in any subject history
+                const allDates = new Set();
+                ['Physics', 'Chemistry', 'Mathematics'].forEach(sub => {
+                    Object.keys(data[sub].history || {}).forEach(date => allDates.add(date));
+                });
+                
+                Array.from(allDates).forEach(date => {
+                    let total = 0;
+                    ['Physics', 'Chemistry', 'Mathematics'].forEach(sub => {
+                        total += (data[sub].history?.[date] || 0);
+                    });
+                    history[date] = total;
+                });
+                return history;
+            }, [data]);
+
             useEffect(() => {
                 const milestones = data.shownMilestones || [];
                 const newMilestones = [...milestones];
                 let foundNew = false;
 
-                // Check for every 10 levels badge
                 const lvlBadgeVal = Math.floor(stats.global.level / 10) * 10;
                 if (lvlBadgeVal >= 10 && !milestones.includes(`lvl-${lvlBadgeVal}`)) {
                     const idx = lvlBadgeVal / 10;
@@ -559,7 +684,6 @@
                     foundNew = true;
                 }
 
-                // Check for every 10 days streak badge
                 const strBadgeVal = Math.floor(stats.global.streak / 10) * 10;
                 if (strBadgeVal >= 10 && !milestones.includes(`str-${strBadgeVal}`)) {
                     setCelebration({ type: 'BADGE', icon: '🔥🔥🔥', text: `Streaker Go ${strBadgeVal/10}` });
@@ -567,7 +691,6 @@
                     foundNew = true;
                 }
 
-                // Special Badges every 50 levels
                 const specVal = Math.floor(stats.global.level / 50) * 50;
                 if (specVal >= 50 && specVal <= 350 && !milestones.includes(`spec-${specVal}`)) {
                     const badge = SPECIAL_BADGES_DATA[specVal];
@@ -576,14 +699,12 @@
                     foundNew = true;
                 }
 
-                // Streak Maintenance Popup (Once per day)
                 if (!foundNew && stats.global.streak > 0 && !milestones.includes(`seen-streak-${stats.global.streak}`)) {
                     setCelebration({ type: 'STREAK', days: stats.global.streak });
                     newMilestones.push(`seen-streak-${stats.global.streak}`);
                     foundNew = true;
                 }
 
-                // Standard Level Up Popup
                 if (!foundNew && stats.global.level > 0 && !milestones.includes(`seen-lvl-${stats.global.level}`)) {
                     setCelebration({ type: 'LEVEL_UP', level: stats.global.level });
                     newMilestones.push(`seen-lvl-${stats.global.level}`);
@@ -608,12 +729,37 @@
                 });
             }, []);
 
-            useEffect(() => localStorage.setItem('jee-universe-final-v7', JSON.stringify(data)), [data]);
+            useEffect(() => localStorage.setItem('jee-universe-final-v12', JSON.stringify(data)), [data]);
 
             const updatePoints = (subject, type, difficulty, newValue) => {
+                const today = new Date().toLocaleDateString('en-CA');
                 setData(prev => {
-                    const delta = newValue - prev[subject].matrix[type.toLowerCase()][difficulty.toLowerCase()];
-                    return { ...prev, [subject]: { ...prev[subject], matrix: { ...prev[subject].matrix, [type.toLowerCase()]: { ...prev[subject].matrix[type.toLowerCase()], [difficulty.toLowerCase()]: newValue } } }, pointsToday: prev.pointsToday + delta };
+                    const oldVal = prev[subject].matrix[type.toLowerCase()][difficulty.toLowerCase()];
+                    const delta = newValue - oldVal;
+                    
+                    const currentHistory = prev[subject].history || {};
+                    const newDailyTotal = Math.max(0, (currentHistory[today] || 0) + delta);
+                    
+                    const newHistory = { 
+                        ...currentHistory, 
+                        [today]: newDailyTotal 
+                    };
+
+                    return { 
+                        ...prev, 
+                        [subject]: { 
+                            ...prev[subject], 
+                            matrix: { 
+                                ...prev[subject].matrix, 
+                                [type.toLowerCase()]: { 
+                                    ...prev[subject].matrix[type.toLowerCase()], 
+                                    [difficulty.toLowerCase()]: newValue 
+                                } 
+                            },
+                            history: newHistory
+                        }, 
+                        pointsToday: Math.max(0, prev.pointsToday + delta)
+                    };
                 });
             };
 
@@ -622,7 +768,7 @@
                     <CelebrationOverlay celebration={celebration} onDismiss={() => setCelebration(null)} />
                     <div className="container-main space-y-8 md:space-y-12">
                         {view === 'dashboard' ? (
-                            <DashboardView globalStats={stats.global} onEnterWorld={(w) => { setActiveWorld(w); setView('world'); window.scrollTo(0, 0); }} />
+                            <DashboardView globalStats={stats.global} globalHistory={globalHistory} onEnterWorld={(w) => { setActiveWorld(w); setView('world'); window.scrollTo(0, 0); }} />
                         ) : (
                             <WorldView subject={activeWorld} onBack={() => setView('dashboard')} subjectData={stats.subjects[activeWorld]} onUpdatePoint={updatePoints} />
                         )}
