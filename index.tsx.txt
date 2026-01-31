@@ -1,0 +1,657 @@
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { createRoot } from 'react-dom/client';
+
+// --- TYPES ---
+type Subject = 'Physics' | 'Chemistry' | 'Mathematics';
+type ExamType = 'MAINS' | 'ADVANCE';
+type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+
+interface SubjectMatrix {
+    mains: { easy: number; medium: number; hard: number };
+    advance: { easy: number; medium: number; hard: number };
+}
+
+interface SubjectData {
+    matrix: SubjectMatrix;
+    history: Record<string, number>;
+}
+
+interface AppData {
+    Physics: SubjectData;
+    Chemistry: SubjectData;
+    Mathematics: SubjectData;
+    baseStreak: number;
+    pointsToday: number;
+    lastVisitDate: string;
+    shownMilestones: string[];
+}
+
+// --- CONSTANTS ---
+const POINTS_PER_XP = 25; 
+const XP_PER_LEVEL = 10;
+const POINTS_PER_LEVEL = POINTS_PER_XP * XP_PER_LEVEL; 
+const STREAK_THRESHOLD = 300; 
+
+const POINT_SCHEME = {
+    Physics: { MAINS: { EASY: 5, MEDIUM: 10, HARD: 15 }, ADVANCE: { EASY: 10, MEDIUM: 20, HARD: 30 } },
+    Chemistry: { MAINS: { EASY: 5, MEDIUM: 15, HARD: 25 }, ADVANCE: { EASY: 10, MEDIUM: 30, HARD: 50 } },
+    Mathematics: { MAINS: { EASY: 5, MEDIUM: 10, HARD: 20 }, ADVANCE: { EASY: 10, MEDIUM: 20, HARD: 40 } }
+};
+
+const ORDINAL_MAP = ["Zero", "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth", "Eleventh", "Twelfth", "Thirteenth", "Fourteenth", "Fifteenth", "Sixteenth", "Seventeenth", "Eighteenth", "Nineteenth", "Twentieth", "Twenty-first", "Twenty-second", "Twenty-third", "Twenty-fourth", "Twenty-fifth", "Twenty-sixth", "Twenty-seventh", "Twenty-eighth", "Twenty-ninth", "Thirtieth", "Thirty-first", "Thirty-second", "Thirty-third", "Thirty-fourth", "Thirty-fifth"];
+
+const SPECIAL_BADGES_DATA: Record<number, { icon: string, name: string }> = {
+    50: { icon: '🌌', name: 'Nebula Voyager' },
+    100: { icon: '☄️', name: 'Comet Rider' },
+    150: { icon: '🪐', name: 'Ring Master' },
+    200: { icon: '🌟', name: 'Nova King' },
+    250: { icon: '🌀', name: 'Galaxy Architect' },
+    300: { icon: '🧿', name: 'Cosmic Entity' },
+    350: { icon: '💎', name: 'Eternal Legend' }
+};
+
+// --- UTILS ---
+const getLast7Days = () => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        days.push(d.toLocaleDateString('en-CA'));
+    }
+    return days;
+};
+
+// --- COMPONENTS ---
+
+// Fixed: Added Record<string, number> type to history prop
+const SolveHistoryGraph = ({ history = {} as Record<string, number>, label = "Your progress" }) => {
+    const days = getLast7Days();
+    const dataPoints = days.map(d => (history[d] || 0));
+    const maxVal = Math.max(...dataPoints, 10); 
+
+    const highestEver = useMemo(() => {
+        const values = Object.values(history);
+        if (values.length === 0) return 0;
+        return Math.max(...values);
+    }, [history]);
+
+    const width = 400;
+    const height = 180;
+    const padding = 30;
+    const graphWidth = width - 2 * padding;
+    const graphHeight = height - 2 * padding;
+    
+    const points = dataPoints.map((val, i) => {
+        const x = padding + (i * graphWidth / (days.length - 1));
+        const y = (height - padding) - (val / maxVal * graphHeight);
+        return { x, y, val };
+    });
+
+    const pathData = points.reduce((acc, p, i) => {
+        return i === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`;
+    }, "");
+
+    const areaData = `${pathData} L ${points[points.length-1].x} ${height-padding} L ${points[0].x} ${height-padding} Z`;
+
+    return (
+        <div className="bg-[#06241c] border border-emerald-900/50 rounded-3xl p-6 shadow-2xl w-full relative group transition-all duration-300">
+            <div className="absolute top-6 right-6 bg-cyan-950/80 border border-cyan-500/30 px-3 py-1.5 rounded-xl text-center shadow-lg backdrop-blur-sm z-10 transition-transform group-hover:scale-110">
+                <div className="text-[7px] text-cyan-500/70 font-game font-bold uppercase tracking-widest leading-none mb-0.5">Highest</div>
+                <div className="text-sm md:text-base font-game font-black text-cyan-300 leading-none">{highestEver}</div>
+            </div>
+
+            <div className="flex items-center justify-between mb-8">
+                <div className="space-y-1">
+                    <h4 className="font-game text-xs md:text-sm text-emerald-400 font-bold uppercase tracking-[0.2em] leading-none">{label}</h4>
+                    <p className="text-[8px] text-emerald-700 uppercase font-bold tracking-[0.2em]">Daily Points Activity</p>
+                </div>
+            </div>
+            
+            <div className="relative w-full h-[180px]">
+                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                    {[...Array(5)].map((_, i) => (
+                        <line 
+                            key={i} 
+                            x1={padding} 
+                            y1={(height - padding) - (i / 4 * graphHeight)} 
+                            x2={width - padding} 
+                            y2={(height - padding) - (i / 4 * graphHeight)} 
+                            stroke="#064e3b" 
+                            strokeWidth="1" 
+                            strokeDasharray="4 4" 
+                            opacity="0.3"
+                        />
+                    ))}
+
+                    <path d={areaData} fill="url(#gradient-cyan-flow)" fillOpacity="0.1" />
+                    <defs>
+                        <linearGradient id="gradient-cyan-flow" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#22d3ee" />
+                            <stop offset="100%" stopColor="transparent" />
+                        </linearGradient>
+                    </defs>
+                    
+                    <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#064e3b" strokeWidth="2" opacity="0.6" />
+                    
+                    <path d={pathData} fill="none" stroke="#22d3ee" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" className="drop-shadow-[0_0_6px_rgba(34,211,238,0.5)] transition-all duration-700" />
+                    
+                    {points.map((p, i) => (
+                        <g key={i}>
+                            <circle cx={p.x} cy={p.y} r="5" fill="#22d3ee" className="cursor-pointer transition-all duration-300 hover:r-7" />
+                            <text x={p.x} y={p.y - 12} textAnchor="middle" className="font-game text-[12px] fill-cyan-300 font-bold drop-shadow-sm">{p.val}</text>
+                            <text x={p.x} y={height - 8} textAnchor="middle" className="font-game text-[7px] fill-emerald-800 font-bold uppercase tracking-tighter">{days[i].split('-').slice(1).join('/')}</text>
+                        </g>
+                    ))}
+                </svg>
+            </div>
+        </div>
+    );
+};
+
+const CelebrationOverlay = ({ celebration, onDismiss }) => {
+    if (!celebration) return null;
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 modal-overlay fade-in overflow-hidden" onClick={onDismiss}>
+            {celebration.type === 'LEVEL_UP' && (
+                <div className="text-center space-y-8 pointer-events-none">
+                    <div className="relative">
+                        <h1 className="font-graffiti text-7xl md:text-9xl text-white graffiti-text uppercase tracking-tight">LEVEL UP!</h1>
+                        <div className="absolute -top-10 -right-10 text-6xl animate-bounce">✨</div>
+                        <div className="absolute -bottom-10 -left-10 text-6xl animate-bounce delay-150">🎉</div>
+                    </div>
+                    <div className="bg-emerald-500 text-[#051a14] font-game px-8 py-4 rounded-full text-2xl md:text-4xl font-bold shadow-2xl">
+                        REACHED LEVEL {celebration.level}
+                    </div>
+                </div>
+            )}
+
+            {celebration.type === 'STREAK' && (
+                <div className="fixed inset-0 flex items-center justify-center pointer-events-auto" onClick={onDismiss}>
+                    <div className="absolute inset-0 bg-orange-600/20 backdrop-blur-sm animate-pulse"></div>
+                    {[...Array(20)].map((_, i) => (
+                        <div key={i} className="ember" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 2}s` }}></div>
+                    ))}
+                    <div className="relative z-10 text-center space-y-4 max-w-lg w-full px-6 py-20 rounded-[4rem] burning-page overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-t from-orange-600 via-transparent to-orange-900/30 opacity-40"></div>
+                        <div className="relative animate-flicker-intense text-8xl md:text-9xl mb-4">🔥</div>
+                        <h1 className="relative font-game text-4xl md:text-7xl font-bold text-white uppercase tracking-tighter drop-shadow-2xl">
+                            BLAZING<br/>STREAK
+                        </h1>
+                        <div className="relative bg-orange-500 text-black font-game font-black text-3xl md:text-6xl px-8 py-4 rounded-2xl mx-auto inline-block border-4 border-white animate-bounce mt-6">
+                            {celebration.days} DAYS
+                        </div>
+                        <p className="relative font-game text-orange-200 text-xs md:text-sm uppercase tracking-[0.4em] font-bold mt-8 animate-pulse">
+                            The Universe is Burning
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {celebration.type === 'BADGE' && (
+                <div className="bg-[#06241c] border-4 border-yellow-500/50 rounded-[3rem] p-10 md:p-16 max-w-xl w-full text-center relative overflow-hidden shadow-[0_0_100px_rgba(234,179,8,0.2)]" onClick={e => e.stopPropagation()}>
+                    <div className="absolute inset-0 flex items-center justify-center -z-10 opacity-30">
+                        <div className="w-[800px] h-[800px] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(234,179,8,0.3)_30deg,transparent_60deg)] animate-rays rounded-full"></div>
+                    </div>
+                    <h4 className="font-game text-yellow-500 text-sm md:text-lg uppercase tracking-[0.5em] mb-8">New Badge Unlocked</h4>
+                    <div className="relative inline-block mb-10">
+                        <div className="absolute inset-0 bg-yellow-500/20 blur-3xl rounded-full"></div>
+                        <div className="relative bg-emerald-950 border-2 border-yellow-500/30 rounded-full w-40 h-40 md:w-56 md:h-56 flex items-center justify-center text-7xl md:text-9xl shadow-2xl">
+                            {celebration.icon}
+                        </div>
+                    </div>
+                    <h2 className="font-game text-white text-2xl md:text-4xl font-bold uppercase tracking-tight mb-4">
+                        {celebration.text}
+                    </h2>
+                    <p className="text-emerald-500/60 font-medium tracking-widest uppercase text-xs mb-10">Added to your collection</p>
+                    <button onClick={onDismiss} className="btn-3d-emerald w-full py-5 rounded-2xl font-game text-xl text-white uppercase tracking-widest border border-emerald-500/20">
+                        Awesome!
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const LevelCard = ({ level, segmentsFilled, label = "Level" }) => (
+    <div className="bg-[#06241c] border border-emerald-900/50 rounded-2xl p-4 md:p-6 flex flex-col justify-center overflow-hidden w-full shadow-lg">
+        <div className="flex items-center gap-3 mb-3">
+            <span className="font-game text-[10px] md:text-xs font-bold text-emerald-100/70 uppercase tracking-widest">{label}</span>
+            <div className="inline-flex items-center justify-center border border-emerald-500/50 px-3 py-1 rounded bg-emerald-950/50">
+                <span className="font-game text-emerald-400 font-bold text-base md:text-2xl leading-none">{level}</span>
+            </div>
+        </div>
+        <div className="relative w-full">
+            <div className="h-[12px] md:h-[18px] w-full bg-emerald-950/80 border border-emerald-900/30 rounded-full overflow-hidden flex gap-[2px] p-[1.5px]">
+                {[...Array(10)].map((_, i) => (
+                    <div key={i} className={`flex-1 h-full first:rounded-l-full last:rounded-r-full transition-all duration-500 ${i < segmentsFilled ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]' : 'bg-emerald-900/10'}`} />
+                ))}
+            </div>
+            <div className="flex justify-between mt-2 px-1">
+                <span className="text-[8px] md:text-[10px] text-emerald-800 font-bold uppercase tracking-wider">XP PROGRESS</span>
+                <span className="text-[8px] md:text-[10px] text-emerald-500/80 font-bold uppercase tracking-wider">{segmentsFilled * 10}%</span>
+            </div>
+        </div>
+    </div>
+);
+
+const StreakCard = ({ streak = 0, label = "Streak" }) => (
+    <div className={`relative bg-[#06241c] border ${streak > 0 ? 'border-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.15)]' : 'border-orange-500/20'} rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center group hover:border-orange-500/60 transition-all min-h-[110px] overflow-hidden`}>
+        <span className={`text-2xl md:text-4xl mb-1 flex-shrink-0 ${streak > 0 ? 'drop-shadow-[0_0_8px_#f97316]' : ''}`}>🔥</span>
+        <div className={`${streak > 0 ? 'text-orange-400' : 'text-orange-500'} font-game text-sm md:text-xl font-bold leading-tight break-all relative z-10`}>{streak} DAYS</div>
+        <div className="text-emerald-100/50 font-semibold uppercase tracking-widest mt-1 text-[8px] md:text-[10px] relative z-10">{label}</div>
+    </div>
+);
+
+const PointsCard = ({ points, label = "Points" }) => (
+    <div className="bg-[#06241c] border border-yellow-500/20 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center group hover:border-yellow-500/50 transition-all shadow-lg min-h-[110px]">
+        <span className="text-2xl md:text-4xl mb-1 flex-shrink-0">⚡</span>
+        <div className="text-yellow-500 font-game text-sm md:text-xl font-bold leading-tight break-all">{points.toLocaleString()}</div>
+        <div className="text-emerald-100/50 font-semibold uppercase tracking-widest mt-1 text-[8px] md:text-[10px]">{label}</div>
+    </div>
+);
+
+const ActionModal = ({ isOpen, onClose, subject, examType, difficulty, initialPoints, onSave }) => {
+    const [localPoints, setLocalPoints] = useState(0);
+    useEffect(() => { if (isOpen) setLocalPoints(initialPoints); }, [isOpen, initialPoints]);
+    if (!isOpen) return null;
+    const inc = (POINT_SCHEME as any)[subject]?.[examType]?.[difficulty] || 10;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 modal-overlay fade-in" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="bg-[#06241c] border border-emerald-500/40 rounded-3xl p-6 md:p-10 w-full max-w-lg space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between pb-4 border-b border-emerald-900/30">
+                    <button onClick={onClose} className="bg-red-950/20 hover:bg-red-900/30 text-red-400 border border-red-900/40 w-10 h-10 md:w-14 md:h-14 flex items-center justify-center rounded-xl font-game text-2xl md:text-3xl transition-all active:scale-95 leading-none">×</button>
+                    <button onClick={() => setLocalPoints(0)} className="bg-slate-800/40 hover:bg-slate-800/60 text-slate-300 border border-slate-700/50 px-5 py-2 md:px-7 md:py-3 rounded-xl font-game text-[10px] md:text-base tracking-widest transition-all active:scale-95 uppercase">RESET</button>
+                </div>
+                <div className="text-center space-y-1">
+                    <h2 className="font-game text-xl md:text-3xl text-emerald-400 font-bold tracking-widest uppercase leading-tight">{subject}</h2>
+                    <p className="text-[10px] md:text-xs text-emerald-600 font-bold tracking-widest uppercase">{examType} • {difficulty} (+{inc})</p>
+                </div>
+                <div className="bg-emerald-950/80 border-2 border-emerald-500/30 rounded-2xl py-8 md:py-12 text-center relative overflow-hidden shadow-inner">
+                    <div className="text-yellow-500 font-game text-4xl md:text-7xl font-bold tracking-tighter flex items-center justify-center gap-3 overflow-hidden px-4">
+                        <span className="text-3xl md:text-5xl shrink-0">⚡</span>{localPoints}
+                    </div>
+                    <div className="text-emerald-500/40 font-bold text-[8px] md:text-[10px] uppercase tracking-widest mt-2">Data Points Earned</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => setLocalPoints(p => p + inc)} className="btn-3d-emerald rounded-2xl py-6 flex flex-col items-center justify-center active:scale-95 transition-transform">
+                        <span className="text-4xl text-emerald-100 mb-1">+</span>
+                        <span className="text-[10px] font-game text-emerald-500/80 font-bold uppercase">ADD {inc}</span>
+                    </button>
+                    <button onClick={() => setLocalPoints(p => Math.max(0, p - inc))} className="btn-3d-emerald rounded-2xl py-6 flex flex-col items-center justify-center active:scale-95 transition-transform">
+                        <span className="text-4xl text-emerald-100 mb-1">−</span>
+                        <span className="text-[10px] font-game text-emerald-500/80 font-bold uppercase">SUB {inc}</span>
+                    </button>
+                </div>
+                <button onClick={() => onSave(localPoints)} className="btn-3d-emerald w-full rounded-2xl py-4 flex items-center justify-center active:scale-95 transition-transform group">
+                    <span className="font-game text-xs md:text-xl text-emerald-100 font-bold uppercase tracking-[0.2em]">SAVE CHANGES</span>
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const SubBlockButton = ({ title, onClick }) => (
+    <button onClick={onClick} className="btn-3d-emerald w-full py-4 md:py-6 rounded-xl flex items-center justify-center border border-emerald-500/10 active:scale-95 transition-transform">
+        <span className="font-game text-[10px] md:text-base lg:text-lg text-emerald-100/90 uppercase tracking-widest font-bold leading-none">{title}</span>
+    </button>
+);
+
+const ColumnBlock = ({ title, children }) => (
+    <div className="bg-[#06241c] border border-emerald-900/50 rounded-xl p-4 md:p-6 lg:p-8 flex flex-col gap-4 md:gap-6 h-full w-full shadow-lg">
+        <div className="border-b border-emerald-900/30 pb-3 md:pb-4 text-center">
+            <h3 className="font-game text-[10px] md:text-base text-emerald-400 font-bold uppercase tracking-widest">{title}</h3>
+        </div>
+        <div className="flex flex-col gap-3 md:gap-4">{children}</div>
+    </div>
+);
+
+const WorldDashboard = ({ onAction }) => (
+    <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-stretch w-full">
+        <div className="flex-1">
+            <ColumnBlock title="MAINS">
+                <SubBlockButton title="EASY" onClick={() => onAction('MAINS', 'EASY')} />
+                <SubBlockButton title="MEDIUM" onClick={() => onAction('MAINS', 'MEDIUM')} />
+                <SubBlockButton title="HARD" onClick={() => onAction('MAINS', 'HARD')} />
+            </ColumnBlock>
+        </div>
+        <div className="flex-1">
+            <ColumnBlock title="ADVANCE">
+                <SubBlockButton title="EASY" onClick={() => onAction('ADVANCE', 'EASY')} />
+                <SubBlockButton title="MEDIUM" onClick={() => onAction('ADVANCE', 'MEDIUM')} />
+                <SubBlockButton title="HARD" onClick={() => onAction('ADVANCE', 'HARD')} />
+            </ColumnBlock>
+        </div>
+    </div>
+);
+
+const DashboardView = ({ globalStats, globalHistory, onEnterWorld }) => {
+    const levelBadges = useMemo(() => {
+        const list = [];
+        for (let i = 10; i <= globalStats.level; i += 10) {
+            const stageIndex = i / 10;
+            const stageName = ORDINAL_MAP[stageIndex] || `${stageIndex}th`;
+            list.push({ icon: '🏆', text: `${stageName} stage Keep going`, key: `lvl-${i}` });
+        }
+        return list;
+    }, [globalStats.level]);
+
+    const streakBadges = useMemo(() => {
+        const list = [];
+        for (let i = 10; i <= globalStats.streak; i += 10) {
+            const streakCount = i / 10;
+            list.push({ icon: '🔥🔥🔥', text: `Streaker Go ${streakCount}`, key: `streak-${i}` });
+        }
+        return list;
+    }, [globalStats.streak]);
+
+    const specialBadges = useMemo(() => {
+        const list = [];
+        for (let i = 50; i <= Math.min(globalStats.level, 350); i += 50) {
+            if (SPECIAL_BADGES_DATA[i]) {
+                list.push({ icon: SPECIAL_BADGES_DATA[i].icon, text: SPECIAL_BADGES_DATA[i].name, key: `special-${i}` });
+            }
+        }
+        return list;
+    }, [globalStats.level]);
+
+    return (
+        <div className="fade-in space-y-8 md:space-y-12 pb-20">
+            <header className="bg-emerald-950/20 border border-emerald-900/50 rounded-3xl p-8 md:p-12 lg:p-20 text-center relative overflow-hidden shadow-xl">
+                <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500/20"></div>
+                <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-8xl font-game font-bold text-emerald-400 tracking-tighter text-center uppercase leading-none break-words">JEE UNIVERSE</h1>
+                <div className="flex items-center justify-center gap-4 mt-4 md:mt-6">
+                    <div className="hidden sm:block h-px w-8 md:w-16 bg-emerald-900"></div>
+                    <p className="text-emerald-500/50 font-medium tracking-widest uppercase text-[8px] md:text-xs lg:text-sm">The Ultimate Preparation Odyssey</p>
+                    <div className="hidden sm:block h-px w-8 md:w-16 bg-emerald-900"></div>
+                </div>
+            </header>
+
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
+                <div className="col-span-2"><LevelCard level={globalStats.level} segmentsFilled={globalStats.segments} /></div>
+                <div className="col-span-1"><StreakCard streak={globalStats.streak} /></div>
+                <div className="col-span-1"><PointsCard points={globalStats.points} label="Total Points" /></div>
+            </section>
+
+            <section className="bg-emerald-950/20 border border-emerald-800/40 rounded-[2rem] p-6 md:p-10 space-y-10 md:space-y-14 relative overflow-hidden shadow-xl">
+                <div className="flex justify-center">
+                    <div className="bg-[#06241c] border border-emerald-500/30 rounded-xl px-12 md:px-20 py-4 shadow-inner">
+                        <h2 className="text-emerald-400 font-game text-sm md:text-xl lg:text-2xl font-bold uppercase tracking-[0.3em]">Worlds</h2>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+                    {(['Physics', 'Chemistry', 'Mathematics'] as Subject[]).map((subject, idx) => (
+                        <button key={subject} onClick={() => onEnterWorld(subject)} className="btn-3d-emerald rounded-2xl md:rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center gap-4 group transition-all hover:scale-[1.02]">
+                            <div className="w-14 h-14 md:w-20 md:h-20 rounded-full bg-emerald-950/50 flex items-center justify-center border border-emerald-500/20 group-hover:border-emerald-500 transition-all duration-300 shadow-lg aspect-square overflow-hidden shrink-0">
+                                <span className="text-3xl md:text-5xl">{idx === 0 ? '⚛️' : idx === 1 ? '🧪' : '🧮'}</span>
+                            </div>
+                            <span className="font-game text-[10px] md:text-xs text-emerald-50/90 font-bold uppercase tracking-widest text-center leading-none">{subject}</span>
+                        </button>
+                    ))}
+                </div>
+            </section>
+            
+            <section className="bg-[#06241c] border border-emerald-900/30 rounded-3xl p-6 md:p-10 space-y-8 md:space-y-12 shadow-inner">
+                <div className="flex justify-center">
+                    <div className="bg-[#051a14] border border-emerald-500/20 rounded-xl px-10 md:px-14 py-3">
+                        <h2 className="text-emerald-500 font-game text-xs md:text-xl font-bold uppercase tracking-[0.4em]">Trophy Room</h2>
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 items-start">
+                    <div className="space-y-4">
+                        <h4 className="font-game text-[10px] md:text-xs text-emerald-400/60 uppercase tracking-widest text-center border-b border-emerald-900/30 pb-2">Level Up Badges</h4>
+                        <div className="flex flex-col gap-3">
+                            {levelBadges.length === 0 && <div className="text-emerald-900/40 text-center font-game text-[8px] py-4 italic uppercase">Empty Slot</div>}
+                            {levelBadges.map(badge => (
+                                <div key={badge.key} className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-4 animate-fadeIn">
+                                    <span className="text-2xl">{badge.icon}</span>
+                                    <span className="font-game text-[8px] md:text-[10px] text-emerald-100/80 uppercase leading-tight">{badge.text}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h4 className="font-game text-[10px] md:text-xs text-emerald-400/60 uppercase tracking-widest text-center border-b border-emerald-900/30 pb-2">Streak Badges</h4>
+                        <div className="flex flex-col gap-3">
+                            {streakBadges.length === 0 && <div className="text-emerald-900/40 text-center font-game text-[8px] py-4 italic uppercase">Empty Slot</div>}
+                            {streakBadges.map(badge => (
+                                <div key={badge.key} className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-4 animate-fadeIn">
+                                    <span className="text-2xl">{badge.icon}</span>
+                                    <span className="font-game text-[8px] md:text-[10px] text-emerald-100/80 uppercase leading-tight">{badge.text}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h4 className="font-game text-[10px] md:text-xs text-emerald-400/60 uppercase tracking-widest text-center border-b border-emerald-900/30 pb-2">Special Badges</h4>
+                        <div className="flex flex-col gap-3">
+                            {specialBadges.length === 0 && <div className="text-emerald-900/40 text-center font-game text-[8px] py-4 italic uppercase">Empty Slot</div>}
+                            {specialBadges.map(badge => (
+                                <div key={badge.key} className="bg-emerald-950/30 border border-yellow-500/20 rounded-xl p-4 flex items-center gap-4 animate-fadeIn shadow-[0_0_15px_rgba(234,179,8,0.05)]">
+                                    <span className="text-2xl">{badge.icon}</span>
+                                    <span className="font-game text-[8px] md:text-[10px] text-yellow-500/90 uppercase leading-tight">{badge.text}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section className="pt-4">
+                <SolveHistoryGraph history={globalHistory} label="Your progress" />
+            </section>
+        </div>
+    );
+};
+
+const WorldView = ({ subject, onBack, subjectData, onUpdatePoint }) => {
+    const [modalConfig, setModalConfig] = useState({ isOpen: false, examType: '', difficulty: '' });
+    const getIcon = () => subject === 'Physics' ? '⚛️' : (subject === 'Chemistry' ? '🧪' : '🧮');
+
+    return (
+        <div className="fade-in space-y-8 md:space-y-10 pb-20">
+            <header className="bg-emerald-950/20 border border-emerald-900/50 rounded-2xl p-4 md:p-6 flex items-center justify-between gap-4 sticky top-4 z-40 backdrop-blur-md shadow-xl">
+                <button onClick={onBack} className="bg-[#06241c] border border-emerald-500/30 px-4 md:px-6 py-2 rounded-xl font-game text-[8px] md:text-xs text-emerald-400 uppercase tracking-widest hover:bg-emerald-900/40 transition-all active:scale-95 leading-none">← Back</button>
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl md:text-3xl shrink-0">{getIcon()}</span>
+                    <h1 className="text-base md:text-xl lg:text-2xl font-game font-bold text-emerald-400 tracking-tighter uppercase leading-none">{subject}</h1>
+                </div>
+                <div className="hidden sm:block sm:w-[80px]"></div>
+            </header>
+
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="col-span-2 md:col-span-3 h-full">
+                    <LevelCard level={subjectData.level} segmentsFilled={subjectData.segments} label="Subject Lvl" />
+                </div>
+                <div className="col-span-1 md:col-span-1 h-full">
+                    <PointsCard points={subjectData.totalPoints} label="Sub Pts" />
+                </div>
+            </section>
+
+            <WorldDashboard onAction={(type, diff) => setModalConfig({ isOpen: true, examType: type, difficulty: diff })} />
+
+            <div className="w-full">
+                 <SolveHistoryGraph history={subjectData.history} label="Your progress" />
+            </div>
+
+            <ActionModal 
+                isOpen={modalConfig.isOpen}
+                onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
+                subject={subject}
+                examType={modalConfig.examType}
+                difficulty={modalConfig.difficulty}
+                initialPoints={modalConfig.examType ? subjectData.matrix[modalConfig.examType.toLowerCase()][modalConfig.difficulty.toLowerCase()] : 0}
+                onSave={(newPoints) => {
+                    onUpdatePoint(subject, modalConfig.examType, modalConfig.difficulty, newPoints);
+                    setModalConfig({ ...modalConfig, isOpen: false });
+                }}
+            />
+        </div>
+    );
+}
+
+const App = () => {
+    const [view, setView] = useState('dashboard');
+    const [activeWorld, setActiveWorld] = useState<Subject | null>(null);
+    const [celebration, setCelebration] = useState<any>(null);
+
+    // Fixed: Added AppData type to state initialization
+    const [data, setData] = useState<AppData>(() => {
+        const saved = localStorage.getItem('jee-universe-final-v13');
+        const today = new Date().toLocaleDateString('en-CA');
+        return saved ? JSON.parse(saved) : {
+            Physics: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } }, history: {} },
+            Chemistry: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } }, history: {} },
+            Mathematics: { matrix: { mains: { easy: 0, medium: 0, hard: 0 }, advance: { easy: 0, medium: 0, hard: 0 } }, history: {} },
+            baseStreak: 0, pointsToday: 0, lastVisitDate: today,
+            shownMilestones: [] 
+        };
+    });
+
+    const stats = useMemo(() => {
+        const subStats: Record<string, any> = {}; let gPoints = 0;
+        (['Physics', 'Chemistry', 'Mathematics'] as Subject[]).forEach(sub => {
+            const m = data[sub].matrix;
+            const sp = Object.values(m.mains).reduce((a, b) => a + b, 0) + Object.values(m.advance).reduce((a, b) => a + b, 0);
+            gPoints += sp;
+            subStats[sub] = { 
+                totalPoints: sp, 
+                level: Math.floor(sp / POINTS_PER_LEVEL), 
+                segments: Math.floor((sp % POINTS_PER_LEVEL) / POINTS_PER_XP), 
+                matrix: data[sub].matrix,
+                history: data[sub].history || {}
+            };
+        });
+        return { 
+            global: { points: gPoints, level: Math.floor(gPoints / POINTS_PER_LEVEL), segments: Math.floor((gPoints % POINTS_PER_LEVEL) / POINTS_PER_XP), streak: (data.baseStreak || 0) + (data.pointsToday >= STREAK_THRESHOLD ? 1 : 0) },
+            subjects: subStats
+        };
+    }, [data]);
+
+    const globalHistory = useMemo(() => {
+        const history: Record<string, number> = {};
+        const allDates = new Set<string>();
+        (['Physics', 'Chemistry', 'Mathematics'] as Subject[]).forEach(sub => {
+            Object.keys(data[sub].history || {}).forEach(date => allDates.add(date));
+        });
+        
+        Array.from(allDates).forEach(date => {
+            let total = 0;
+            (['Physics', 'Chemistry', 'Mathematics'] as Subject[]).forEach(sub => {
+                // Fixed: Operator '+' cannot be applied to types 'unknown' and 'unknown'
+                total += (data[sub].history?.[date] || 0);
+            });
+            history[date] = total;
+        });
+        return history;
+    }, [data]);
+
+    useEffect(() => {
+        const milestones = data.shownMilestones || [];
+        const newMilestones = [...milestones];
+        let foundNew = false;
+
+        const lvlBadgeVal = Math.floor(stats.global.level / 10) * 10;
+        if (lvlBadgeVal >= 10 && !milestones.includes(`lvl-${lvlBadgeVal}`)) {
+            const idx = lvlBadgeVal / 10;
+            const name = ORDINAL_MAP[idx] || `${idx}th`;
+            setCelebration({ type: 'BADGE', icon: '🏆', text: `${name} stage Keep going` });
+            newMilestones.push(`lvl-${lvlBadgeVal}`);
+            foundNew = true;
+        }
+
+        const strBadgeVal = Math.floor(stats.global.streak / 10) * 10;
+        if (strBadgeVal >= 10 && !milestones.includes(`str-${strBadgeVal}`)) {
+            setCelebration({ type: 'BADGE', icon: '🔥🔥🔥', text: `Streaker Go ${strBadgeVal/10}` });
+            newMilestones.push(`str-${strBadgeVal}`);
+            foundNew = true;
+        }
+
+        const specVal = Math.floor(stats.global.level / 50) * 50;
+        if (specVal >= 50 && specVal <= 350 && !milestones.includes(`spec-${specVal}`)) {
+            const badge = SPECIAL_BADGES_DATA[specVal];
+            setCelebration({ type: 'BADGE', icon: badge.icon, text: badge.name });
+            newMilestones.push(`spec-${specVal}`);
+            foundNew = true;
+        }
+
+        if (!foundNew && stats.global.streak > 0 && !milestones.includes(`seen-streak-${stats.global.streak}`)) {
+            setCelebration({ type: 'STREAK', days: stats.global.streak });
+            newMilestones.push(`seen-streak-${stats.global.streak}`);
+            foundNew = true;
+        }
+
+        if (!foundNew && stats.global.level > 0 && !milestones.includes(`seen-lvl-${stats.global.level}`)) {
+            setCelebration({ type: 'LEVEL_UP', level: stats.global.level });
+            newMilestones.push(`seen-lvl-${stats.global.level}`);
+            foundNew = true;
+        }
+
+        if (foundNew) {
+            setData(prev => ({ ...prev, shownMilestones: newMilestones }));
+        }
+    }, [stats.global.level, stats.global.streak]);
+
+    useEffect(() => {
+        const today = new Date().toLocaleDateString('en-CA');
+        const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
+        setData(prev => {
+            if (prev.lastVisitDate === today) return prev;
+            let newBaseStreak = prev.baseStreak || 0;
+            if (prev.lastVisitDate === yesterday) {
+                newBaseStreak = (prev.pointsToday >= STREAK_THRESHOLD) ? newBaseStreak + 1 : 0;
+            } else { newBaseStreak = 0; }
+            return { ...prev, baseStreak: newBaseStreak, pointsToday: 0, lastVisitDate: today };
+        });
+    }, []);
+
+    useEffect(() => localStorage.setItem('jee-universe-final-v13', JSON.stringify(data)), [data]);
+
+    const updatePoints = (subject: Subject, type: string, difficulty: string, newValue: number) => {
+        const today = new Date().toLocaleDateString('en-CA');
+        setData(prev => {
+            // Fixed: Type 'unknown' cannot be used as an index type
+            const oldVal = (prev[subject].matrix as any)[type.toLowerCase()][difficulty.toLowerCase()];
+            const delta = newValue - oldVal;
+            const currentHistory = prev[subject].history || {};
+            const newDailyTotal = Math.max(0, (currentHistory[today] || 0) + delta);
+            const newHistory = { ...currentHistory, [today]: newDailyTotal };
+            return { 
+                ...prev, 
+                [subject]: { 
+                    ...prev[subject], 
+                    matrix: { 
+                        ...prev[subject].matrix, 
+                        [type.toLowerCase() as keyof SubjectMatrix]: { 
+                            ...(prev[subject].matrix as any)[type.toLowerCase()], 
+                            [difficulty.toLowerCase()]: newValue 
+                        } 
+                    },
+                    history: newHistory
+                }, 
+                pointsToday: Math.max(0, prev.pointsToday + delta)
+            };
+        });
+    };
+
+    return (
+        <div className="min-h-screen bg-[#051a14] p-4 md:p-8 space-y-8 select-none overflow-x-hidden">
+            <CelebrationOverlay celebration={celebration} onDismiss={() => setCelebration(null)} />
+            <div className="container-main space-y-8 md:space-y-12">
+                {view === 'dashboard' ? (
+                    <DashboardView globalStats={stats.global} globalHistory={globalHistory} onEnterWorld={(w) => { setActiveWorld(w as Subject); setView('world'); window.scrollTo(0, 0); }} />
+                ) : (
+                    activeWorld && <WorldView subject={activeWorld} onBack={() => setView('dashboard')} subjectData={stats.subjects[activeWorld]} onUpdatePoint={updatePoints} />
+                )}
+            </div>
+        </div>
+    );
+};
+
+const root = createRoot(document.getElementById('root')!);
+root.render(<App />);
